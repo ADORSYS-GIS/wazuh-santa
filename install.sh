@@ -151,7 +151,7 @@ fi
 
 print_step_header 5 "Restarting Services"
 info_message "Restarting Wazuh agent to apply configuration changes..."
-maybe_sudo /Library/Ossec/bin/wazuh-control restart || warn_message "Failed to restart Wazuh agent"
+maybe_sudo /Library/Ossec/bin/wazuh-control restart >/dev/null 2>&1 || warn_message "Failed to restart Wazuh agent"
 
 print_step_header 6 "Validating installation"
 # Validate installation
