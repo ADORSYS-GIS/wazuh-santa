@@ -100,7 +100,6 @@ SANTA_PKG_NAME="santa-$SANTA_VERSION.pkg"
 SANTA_PKG_URL="https://github.com/northpolesec/santa/releases/download/$SANTA_VERSION/$SANTA_PKG_NAME"
 SANTA_LOG_DIR="/var/db/santa"
 SANTA_LOG_FILE="$SANTA_LOG_DIR/santa.log"
-OSSEC_CONF_PATH="/Library/Ossec/etc/ossec.conf"
 
 # Ensure required directories exist
 info_message "Ensuring required directories exist..."
@@ -120,40 +119,7 @@ info_message "Installing Santa package..."
 maybe_sudo installer -pkg "$TEMP_DIR/$SANTA_PKG_NAME" -target / || error_exit "Failed to install Santa package"
 success_message "Santa installed successfully."
 
-print_step_header 4 "Wazuh Agent Configuration"
-info_message "Configuring Wazuh agent to collect Santa logs..."
-
-# Check if Wazuh config file exists
-if [ ! -f "$OSSEC_CONF_PATH" ]; then
-    error_exit "Wazuh configuration file not found at $OSSEC_CONF_PATH"
-fi
-
-# Backup original config file
-info_message "Backing up original Wazuh configuration..."
-maybe_sudo cp "$OSSEC_CONF_PATH" "$OSSEC_CONF_PATH.backup.$(date +%s)"
-
-# Add Santa log monitoring to Wazuh configuration
-info_message "Adding Santa log monitoring to Wazuh configuration..."
-
-# Check if Santa log monitoring is already configured
-if ! maybe_sudo grep -q "<location>/var/db/santa/santa.log</location>" "$OSSEC_CONF_PATH"; then
-    info_message "Configuring santa logs in $OSSEC_CONF_PATH"
-    sed_alternative -i -e "/<\/ossec_config>/i\\
-                <!-- santa logs -->\\
-                <localfile>\\
-                    <log_format>syslog</log_format>\\
-                    <location>/var/db/santa/santa.log</location>\\
-                </localfile>" "$OSSEC_CONF_PATH"
-    info_message "santa logs are now being monitored"
-else
-    info_message "santa logs already being monitored in $OSSEC_CONF_PATH"
-fi
-
-print_step_header 5 "Restarting Services"
-info_message "Restarting Wazuh agent to apply configuration changes..."
-maybe_sudo /Library/Ossec/bin/wazuh-control restart >/dev/null 2>&1 || warn_message "Failed to restart Wazuh agent"
-
-print_step_header 6 "Validating installation"
+print_step_header 3 "Validating installation"
 # Validate installation
 if command_exists santactl; then
     success_message "Santa CLI tool is available."
@@ -166,13 +132,6 @@ if maybe_sudo launchctl list | grep -q "com.northpolesec.santa.daemon"; then
     success_message "Santa daemon is running."
 else
     warn_message "Santa daemon does not appear to be running."
-fi
-
-# Check if Wazuh configuration includes Santa logs
-if maybe_sudo grep -q "<location>/var/db/santa/santa.log</location>" "$OSSEC_CONF_PATH"; then
-    success_message "Wazuh configuration includes Santa log monitoring."
-else
-    warn_message "Wazuh configuration may not include Santa log monitoring."
 fi
 
 success_message "Installation and configuration complete!"

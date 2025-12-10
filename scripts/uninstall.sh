@@ -111,11 +111,6 @@ main() {
         warn_message "Santa uninstall script returned non-zero exit status. Continuing..."
     }
 
-    print_step "3" "Removing Santa configuration from Wazuh..."
-    maybe_sudo sed -i '' '/<!-- santa logs -->/,/<\/localfile>/d' /Library/Ossec/etc/ossec.conf || {
-        warn_message "Failed to remove Santa log configuration from Wazuh"
-    }
-
     success_message "Santa has been successfully uninstalled."
 }
 
