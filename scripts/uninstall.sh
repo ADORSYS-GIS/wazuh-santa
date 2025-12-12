@@ -83,13 +83,42 @@ UNINSTALL_SCRIPT_PATH="${TEMP_DIR}/uninstall_santa.sh"
 
 cleanup() {
     rm -rf "${TEMP_DIR}" || true
+    
+    # Remove Santa configuration directory if it exists
+    if [[ -d "/var/db/santa" ]]; then
+        info_message "Removing Santa configuration directory..."
+        maybe_sudo rm -rf "/var/db/santa" || warn_message "Failed to remove /var/db/santa"
+    fi
 }
 
 # Set up trap to ensure cleanup happens on exit
 trap cleanup EXIT
 
+# Check if Santa is installed and running
+check_santa_installed() {
+    # Check if Santa components exist
+    if [[ ! -f "/var/db/santa/config.plist" && ! -x "$(command -v santactl 2>/dev/null)" ]]; then
+        info_message "Santa is not installed. Nothing to uninstall."
+        return 1
+    fi
+    
+    # Check if Santa daemon is running
+    if pgrep -q "^com\.google\.santad$"; then
+        info_message "Santa daemon is running. Version: $(santactl version 2>/dev/null || echo 'unknown')"
+    else
+        warn_message "Santa daemon is not running. Proceeding with uninstallation of installed components."
+    fi
+    
+    return 0
+}
+
 # Main execution
 main() {
+    # Check if Santa is installed before proceeding
+    if ! check_santa_installed; then
+        exit 0
+    fi
+    
     print_step "1" "Downloading Santa uninstall script..."
     if command_exists curl; then
         if ! curl -sSL "${UNINSTALL_SCRIPT_URL}" -o "${UNINSTALL_SCRIPT_PATH}"; then

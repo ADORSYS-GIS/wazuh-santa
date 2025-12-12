@@ -9,8 +9,6 @@ fi
 
 # Variables
 LOG_LEVEL=${LOG_LEVEL:-INFO}
-WAZUH_MANAGER=${WAZUH_MANAGER:-'wazuh.example.com'}
-WAZUH_AGENT_VERSION=${WAZUH_AGENT_VERSION:-'4.13.1-1'}
 
 # Define text formatting
 RED='\033[0;31m'
@@ -75,14 +73,6 @@ maybe_sudo() {
     fi
 }
 
-sed_alternative() {
-    if command_exists gsed; then
-        gsed "$@"
-    else
-        sed "$@"
-    fi
-}
-
 # Error Handler
 error_exit() {
     error_message "$1"
@@ -98,12 +88,12 @@ fi
 SANTA_VERSION="2025.11"
 SANTA_PKG_NAME="santa-$SANTA_VERSION.pkg"
 SANTA_PKG_URL="https://github.com/northpolesec/santa/releases/download/$SANTA_VERSION/$SANTA_PKG_NAME"
-SANTA_LOG_DIR="/var/db/santa"
-SANTA_LOG_FILE="$SANTA_LOG_DIR/santa.log"
 
-# Ensure required directories exist
-info_message "Ensuring required directories exist..."
-maybe_sudo mkdir -p "$SANTA_LOG_DIR"
+# Check if Santa is already installed (silent check)
+if [[ -f "/var/db/santa/config.plist" ]] || command -v santactl >/dev/null 2>&1; then
+    info_message "Santa is already installed. Skipping installation."
+    exit 0
+fi
 
 # Installation Process
 TEMP_DIR=$(mktemp -d) || error_exit "Failed to create temporary directory"
