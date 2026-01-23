@@ -1,5 +1,4 @@
-#!/bin/sh
-
+#!/bin/bash
 # Set shell options
 if [ -n "$BASH_VERSION" ]; then
     set -euo pipefail
@@ -7,10 +6,7 @@ else
     set -eu
 fi
 
-# Variables
-LOG_LEVEL=${LOG_LEVEL:-INFO}
-
-# Define text formatting
+# Variables & Constants
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -18,7 +14,13 @@ BLUE='\033[1;34m'
 BOLD='\033[1m'
 NORMAL='\033[0m'
 
-# Function for logging with timestamp
+DLP_BASE_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-auditd/refs/heads/feat/DLP"
+PLIST_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-santa/refs/heads/feature/DLP/config"
+ACTIVE_RESPONSE_DIR="/Library/Ossec/active-response/bin"
+LAUNCHDAEMONS_DIR="/Library/LaunchDaemons"
+PF_CONF_PATH="/etc/pf.conf"
+
+# Helpers
 log() {
     local LEVEL="$1"
     shift
@@ -28,44 +30,22 @@ log() {
     echo -e "${TIMESTAMP} ${LEVEL} ${MESSAGE}"
 }
 
-# Logging helpers
-info_message() {
-    log "${BLUE}${BOLD}[INFO]${NORMAL}" "$*"
-}
-
-warn_message() {
-    log "${YELLOW}${BOLD}[WARNING]${NORMAL}" "$*"
-}
-
-error_message() {
-    log "${RED}${BOLD}[ERROR]${NORMAL}" "$*"
-}
-
-success_message() {
-    log "${GREEN}${BOLD}[SUCCESS]${NORMAL}" "$*"
-}
-
-print_step() {
-    log "${BLUE}${BOLD}[STEP]${NORMAL}" "$1: $2"
-}
-
-
-print_step_header() {
-    echo -e "\n${BOLD}===== STEP $1: $2 =====${NORMAL}\n";
-}
+info() { log "${BLUE}${BOLD}[INFO]${NORMAL}" "$*"; }
+warn() { log "${YELLOW}${BOLD}[WARNING]${NORMAL}" "$*"; }
+error() { log "${RED}${BOLD}[ERROR]${NORMAL}"; exit 1; }
+success() { log "${GREEN}${BOLD}[SUCCESS]${NORMAL}" "$*"; }
 
 # Check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Ensure root privileges, either directly or through sudo
 maybe_sudo() {
     if [ "$(id -u)" -ne 0 ]; then
         if command_exists sudo; then
             sudo "$@"
         else
-            error_message "This script requires root privileges. Please run with sudo or as root."
+            error "This script requires root privileges. Please run with sudo or as root."
             exit 1
         fi
     else
@@ -73,55 +53,106 @@ maybe_sudo() {
     fi
 }
 
-# Error Handler
-error_exit() {
-    error_message "$1"
-    exit 1
+download() {
+    local url="$1" dest="$2" mode="${3:-644}"
+    local tmp; tmp=$(mktemp)
+    if command -v curl >/dev/null 2>&1; then
+        curl -sSL "$url" -o "$tmp" || return 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$url" -O "$tmp" || return 1
+    else
+        return 1
+    fi
+    maybe_sudo mkdir -p "$(dirname "$dest")"
+    maybe_sudo mv "$tmp" "$dest"
+    maybe_sudo chmod "$mode" "$dest"
+    maybe_sudo chown root:wheel "$dest" 2>/dev/null || true
 }
 
-# Check if running on macOS
-if [[ "$(uname)" != "Darwin" ]]; then
-    error_exit "This script is designed for macOS only."
-fi
+ensure_pf_rules() {
+    if grep -q "wazuh_blocked" "$PF_CONF_PATH" 2>/dev/null; then return 0; fi
+    local tmp; tmp=$(mktemp)
+    awk '/^dummynet-anchor "com\.apple\/\*"/ { 
+        print; print ""; 
+        print "table <wazuh_blocked> persist"; 
+        print "block out quick from any to <wazuh_blocked>"; 
+        print "block in  quick from <wazuh_blocked> to any"; 
+        inserted=1; next 
+    } { print } 
+    END { if (!inserted) { 
+        print ""; print "table <wazuh_blocked> persist"; 
+        print "block out quick from any to <wazuh_blocked>"; 
+        print "block in  quick from <wazuh_blocked> to any" 
+    } }' "$PF_CONF_PATH" > "$tmp"
+    maybe_sudo cp "$tmp" "$PF_CONF_PATH"
+    rm -f "$tmp"
+}
 
-# Configuration
+# Main
+[ "$(uname)" != "Darwin" ] && error "This script runs on macOS only."
+
+TEMP_DIR=$(mktemp -d); trap 'rm -rf "$TEMP_DIR"' EXIT
+
+# Santa Installation
 SANTA_VERSION="2025.11"
-SANTA_PKG_NAME="santa-$SANTA_VERSION.pkg"
-SANTA_PKG_URL="https://github.com/northpolesec/santa/releases/download/$SANTA_VERSION/$SANTA_PKG_NAME"
-
-# Check if Santa is already installed (silent check)
-if [[ -f "/var/db/santa/config.plist" ]] || command -v santactl >/dev/null 2>&1; then
-    info_message "Santa is already installed. Skipping installation."
-    exit 0
+SANTA_PKG="santa-$SANTA_VERSION.pkg"
+if ! command_exists santactl; then
+    info "Downloading Santa $SANTA_VERSION..."
+    curl -SL --progress-bar "https://github.com/northpolesec/santa/releases/download/$SANTA_VERSION/$SANTA_PKG" -o "$TEMP_DIR/$SANTA_PKG"
+    info "Installing Santa $SANTA_VERSION..."
+    maybe_sudo installer -pkg "$TEMP_DIR/$SANTA_PKG" -target / >/dev/null 2>&1 || error "Santa install failed."
+    success "Santa installed successfully."
+else
+    info "Santa already installed."
 fi
 
-# Installation Process
-TEMP_DIR=$(mktemp -d) || error_exit "Failed to create temporary directory"
-trap 'rm -rf "$TEMP_DIR"' EXIT
+# Active Response Scripts
+info "Installing DLP active response scripts..."
+for script in block.sh unblock.sh dlp.sh; do
+    download "$DLP_BASE_URL/scripts/$script" "$ACTIVE_RESPONSE_DIR/$script" 755 || \
+    download "$DLP_BASE_URL/$script" "$ACTIVE_RESPONSE_DIR/$script" 755 || error "Failed: $script"
+done
+success "DLP active response scripts installed successfully."
 
-print_step_header 1 "Santa Package Download"
-info_message "Downloading Santa package from $SANTA_PKG_URL..."
-curl -SL --progress-bar -o "$TEMP_DIR/$SANTA_PKG_NAME" "$SANTA_PKG_URL" || error_exit "Failed to download $SANTA_PKG_NAME"
-success_message "Santa package downloaded successfully."
+# LaunchDaemons
+info "Configuring LaunchDaemons..."
+for p in blockdomain unblock; do
+    plist="$LAUNCHDAEMONS_DIR/com.wazuh.$p.plist"
+    download "$PLIST_URL/$p.plist" "$plist" 644
+    maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
+done
+success "LaunchDaemons configured successfully."
 
-print_step_header 2 "Santa Installation"
-info_message "Installing Santa package..."
-maybe_sudo installer -pkg "$TEMP_DIR/$SANTA_PKG_NAME" -target / || error_exit "Failed to install Santa package"
-success_message "Santa installed successfully."
+# PF Configuration
+info "Configuring PF..."
+ensure_pf_rules
+maybe_sudo pfctl -E 2>/dev/null || true
+maybe_sudo pfctl -f "$PF_CONF_PATH" 2>/dev/null || warn "PF reload failed."
+success "PF configured successfully."
 
-print_step_header 3 "Validating installation"
-# Validate installation
+info "Verifying installation"
+info "Checking Santa..."
 if command_exists santactl; then
-    success_message "Santa CLI tool is available."
+    success "Santa is installed"
 else
-    error_exit "Santa CLI tool is not available after installation."
+    error "Santa is not installed"
 fi
 
-# Check if Santa daemon is running
-if maybe_sudo launchctl list | grep -q "com.northpolesec.santa.daemon"; then
-    success_message "Santa daemon is running."
+info "Checking PF configuration..."
+if maybe_sudo pfctl -sr | grep -q "wazuh_blocked"; then
+    success "PF is configured"
 else
-    warn_message "Santa daemon does not appear to be running."
+    error "PF is not configured"
 fi
 
-success_message "Installation and configuration complete!"
+
+info "Reloading LaunchDaemons..."
+for p in blockdomain unblock; do
+    plist="$LAUNCHDAEMONS_DIR/com.wazuh.$p.plist"
+    if [[ ! -f "$plist" ]]; then
+        error "LaunchDaemon not found: $plist"
+    fi
+done
+success "LaunchDaemons all present."
+
+success "Installation complete!"
