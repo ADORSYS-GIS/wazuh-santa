@@ -4,28 +4,27 @@
 <plist version='1.0'>
 <dict>
   <key>Label</key>
-  <string>com.wazuh.blockdomain</string>
+  <string>com.wazuh.refresh</string>
+
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
   </dict>
+
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/gis/Projects/Wazuh/wazuh-auditd/scripts/block.sh</string>
+    <string>/Library/Ossec/active-response/bin/dlp.sh</string>
+    <string>-refresh</string>
   </array>
 
   <key>StartInterval</key>
-  <integer>60</integer>
-
+  <integer>300</integer>
+  
+  <key>StandardErrorPath</key>
+  <string>/var/log/unblock_stderr.log</string>
+  
   <key>RunAtLoad</key>
   <true/>
-
-  <key>KeepAlive</key>
-  <false/>
-
-  <key>StandardErrorPath</key>
-  <string>/var/log/block_stderr.log</string>
-
 </dict>
 </plist>
