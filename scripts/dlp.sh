@@ -246,7 +246,7 @@ fi
 # -------------------------------------------------------------------------
 # Argument Extraction
 # -------------------------------------------------------------------------
-extract_match() {
+extract_destination() {
     local value="$1"
     local ip_regex='([0-9]{1,3}(\.[0-9]{1,3}){3})'
     local domain_regex='https?://([^:/]+)'
@@ -262,21 +262,6 @@ extract_match() {
         fi
     fi
     return 1
-}
-
-extract_destination() {
-    local input="$1"
-    local arg
-
-    if [[ "$OS_NAME" == "Darwin" ]]; then
-        extract_match "$input"
-    elif [[ "$OS_NAME" == "Linux" ]]; then
-        while read -r arg; do
-            if extract_match "$arg"; then
-                return
-            fi
-        done < <(jq -r '.[]' <<< "$input")
-    fi
 }
 
 # -------------------------------------------------------------------------
