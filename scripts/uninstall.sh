@@ -67,14 +67,13 @@ remove_pf_rules() {
 TEMP_DIR=$(mktemp -d); trap 'rm -rf "$TEMP_DIR"' EXIT
 
 info "Removing Wazuh integration components..."
-for p in blockdomain unblock; do
-    plist="$LAUNCHDAEMONS_DIR/com.wazuh.$p.plist"
-    maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
-    maybe_sudo rm -f "$plist"
-done
+plist="$LAUNCHDAEMONS_DIR/com.wazuh.refresh.plist"
+maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
+maybe_sudo rm -f "$plist"
+
 # Active Response Scripts
-info "Removing DLP active response scripts and state directory..."
-maybe_sudo rm -f "$ACTIVE_RESPONSE_BIN_DIR/block.sh" "$ACTIVE_RESPONSE_BIN_DIR/unblock.sh" "$ACTIVE_RESPONSE_BIN_DIR/dlp.sh" || warn "Failed to remove one or more DLP active response scripts."
+info "Removing DLP active response script and state directory..."
+maybe_sudo rm -f "$ACTIVE_RESPONSE_BIN_DIR/dlp.sh" || warn "Failed to remove dlp.sh"
 maybe_sudo rm -rf "$ACTIVE_RESPONSE_DIR/dlp-state" || warn "Failed to remove DLP state directory."
 
 info "Cleaning up PF rules..."

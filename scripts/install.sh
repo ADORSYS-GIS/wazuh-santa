@@ -14,8 +14,8 @@ BLUE='\033[1;34m'
 BOLD='\033[1m'
 NORMAL='\033[0m'
 
-DLP_BASE_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-auditd/refs/heads/feat/DLP"
-PLIST_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-santa/refs/heads/feature/DLP/config"
+DLP_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-santa/refs/heads/feature/DLP/scripts/dlp.sh"
+PLIST_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-santa/refs/heads/feature/DLP/config/refresh.plist"
 ACTIVE_RESPONSE_DIR="/Library/Ossec/active-response/bin"
 LAUNCHDAEMONS_DIR="/Library/LaunchDaemons"
 PF_CONF_PATH="/etc/pf.conf"
@@ -107,21 +107,16 @@ else
 fi
 
 # Active Response Scripts
-info "Installing DLP active response scripts..."
-for script in block.sh unblock.sh dlp.sh; do
-    download "$DLP_BASE_URL/scripts/$script" "$ACTIVE_RESPONSE_DIR/$script" 755 || \
-    download "$DLP_BASE_URL/$script" "$ACTIVE_RESPONSE_DIR/$script" 755 || error "Failed: $script"
-done
-success "DLP active response scripts installed successfully."
+info "Installing DLP active response script..."
+download "$DLP_URL" "$ACTIVE_RESPONSE_DIR/dlp.sh" 755 || error "Failed to download dlp.sh"
+success "DLP active response script installed successfully."
 
 # LaunchDaemons
-info "Configuring LaunchDaemons..."
-for p in blockdomain unblock; do
-    plist="$LAUNCHDAEMONS_DIR/com.wazuh.$p.plist"
-    download "$PLIST_URL/$p.plist" "$plist" 644
-    maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
-done
-success "LaunchDaemons configured successfully."
+info "Configuring LaunchDaemon..."
+plist="$LAUNCHDAEMONS_DIR/com.wazuh.refresh.plist"
+download "$PLIST_URL" "$plist" 644 || error "Failed to download refresh.plist"
+maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
+success "LaunchDaemon configured successfully."
 
 # PF Configuration
 info "Configuring PF..."
@@ -145,14 +140,11 @@ else
     error "PF is not configured"
 fi
 
-
-info "Reloading LaunchDaemons..."
-for p in blockdomain unblock; do
-    plist="$LAUNCHDAEMONS_DIR/com.wazuh.$p.plist"
-    if [[ ! -f "$plist" ]]; then
-        error "LaunchDaemon not found: $plist"
-    fi
-done
-success "LaunchDaemons all present."
+info "Checking LaunchDaemon..."
+plist="$LAUNCHDAEMONS_DIR/com.wazuh.refresh.plist"
+if [[ ! -f "$plist" ]]; then
+    error "LaunchDaemon not found: $plist"
+fi
+success "LaunchDaemon present."
 
 success "Installation complete!"
