@@ -72,12 +72,14 @@ download() {
 ensure_pf_rules() {
     if grep -q "wazuh_blocked" "$PF_CONF_PATH" 2>/dev/null; then return 0; fi
     local tmp; tmp=$(mktemp)
-    awk '/^dummynet-anchor "com\.apple\/\*"/ { 
-        print; print ""; 
-        print "table <wazuh_blocked> persist"; 
-        print "block out quick from any to <wazuh_blocked>"; 
-        print "block in  quick from <wazuh_blocked> to any"; 
-        inserted=1; next 
+    awk '/^anchor "com\.apple\/\*"/ { 
+        if (!inserted) {
+            print "table <wazuh_blocked> persist"; 
+            print "block out quick from any to <wazuh_blocked>"; 
+            print "block in  quick from <wazuh_blocked> to any"; 
+            print "";
+            inserted=1;
+        }
     } { print } 
     END { if (!inserted) { 
         print ""; print "table <wazuh_blocked> persist"; 
