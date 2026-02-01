@@ -307,10 +307,14 @@ confirm_action() {
     local action="$1"
     local message="$2"
     
+    log "DEBUG: Requesting user confirmation for: $action"
     if [[ "$OS_NAME" == "Darwin" ]]; then
         local cmd="display dialog \"$message\" with title \"Wazuh DLP Confirmation\" buttons {\"Cancel\", \"$action\"} default button \"Cancel\" with icon caution"
         if osascript -e "$cmd" 2>/dev/null | grep -q "button returned:$action"; then
+            log "Info: User confirmed action: $action"
             return 0
+        else
+            log "Info: User cancelled action: $action"
         fi
     fi
     return 1
