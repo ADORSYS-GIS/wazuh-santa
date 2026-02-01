@@ -336,7 +336,10 @@ send_notification() {
         
         if [[ "$result" == *"Block Temporarily"* ]]; then action="temp"
         elif [[ "$result" == *"Block Permanently"* ]]; then action="perm"
-        else action="temp"; fi
+        else
+            log "No action selected. Defaulting to Temporary block" 
+            action="temp"
+        fi
     fi
 
     case "$action" in
@@ -362,7 +365,7 @@ send_notification() {
 # Main Execution
 # -------------------------------------------------------------------------
 read INPUT_JSON
-EXFIL_COMMAND==$(echo "$INPUT_JSON" | jq -r .parameters.alert.data.args)
+EXFIL_COMMAND=$(echo "$INPUT_JSON" | jq -r .parameters.alert.data.args)
 RULE_ID=$(echo "$INPUT_JSON" | jq -r .parameters.alert.rule.id)
 
 destination=$(extract_destination "$EXFIL_COMMAND")
