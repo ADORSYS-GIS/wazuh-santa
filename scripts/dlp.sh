@@ -336,6 +336,7 @@ send_notification() {
         
         if [[ "$result" == *"Block Temporarily"* ]]; then action="temp"
         elif [[ "$result" == *"Block Permanently"* ]]; then action="perm"
+        elif [[ "$result" == *"Dismiss"* ]]; then action="dismiss"
         else
             log "No action selected. Defaulting to Temporary block" 
             action="temp"
