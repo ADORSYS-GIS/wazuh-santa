@@ -48,13 +48,55 @@ trap cleanup EXIT INT TERM
 # -------------------------------------------------------------------------
 # State Management
 # -------------------------------------------------------------------------
+recover_state() {
+    local now unblock_time state
+    now=$(date +"%Y-%m-%d %H:%M:%S")
+    unblock_time=$(date -v+${UNBLOCK_DURATION}S +"%Y-%m-%d %H:%M:%S")
+    
+    log "Info: Reconstructing state from pf table $PF_TABLE"
+    
+    # Start with empty state
+    state="{\"domains\":{},\"ips\":{},\"corrupted\":true,\"last_run\":\"$now\"}"
+    
+    # Get IPs from pf table
+    local ips
+    ips=$(pfctl -t "$PF_TABLE" -T show 2>/dev/null || true)
+    
+    while IFS= read -r ip; do
+        # Clean up IP (might have whitespace)
+        ip=$(echo "$ip" | xargs)
+        [[ -z "$ip" ]] && continue
+        
+        log "Info: Recovered IP $ip from firewall table"
+        state=$(echo "$state" | jq --arg ip "$ip" --arg utime "$unblock_time" \
+            '.ips[$ip] = {type: "temp", unblockTime: $utime}')
+    done <<< "$ips"
+    
+    echo "$state" > "$STATE_FILE"
+    chmod 640 "$STATE_FILE"
+    echo "$state"
+}
+
 get_state() {
+    local now
+    now=$(date +"%Y-%m-%d %H:%M:%S")
+
     if [[ ! -f "$STATE_FILE" ]]; then
         log "Warning: State file not found, creating new state file"
-        echo '{"domains":{},"ips":{}}' > "$STATE_FILE"
+        echo "{\"domains\":{},\"ips\":{},\"corrupted\":false,\"last_run\":\"$now\"}" > "$STATE_FILE"
         chmod 640 "$STATE_FILE"
+    elif ! jq . "$STATE_FILE" >/dev/null 2>&1; then
+        log "Error: State file $STATE_FILE is corrupted (invalid JSON). Recovering..."
+        mv "$STATE_FILE" "${STATE_FILE}.corrupted"
+        recover_state
+        return
     else
         log "Info: Loaded state file: $STATE_FILE"
+        # Update last_run and corrupted status
+        local state
+        state=$(cat "$STATE_FILE")
+        state=$(echo "$state" | jq --arg now "$now" '.corrupted = false | .last_run = $now')
+        echo "$state" > "$STATE_FILE"
     fi
     cat "$STATE_FILE"
 }
@@ -175,6 +217,13 @@ update_domain() {
 if $REFRESH; then
     log "Info: Running periodic domain refresh and timeout check"
     state=$(get_state)
+    
+    # Try to recover state if empty
+    if echo "$state" | jq -e '.domains == {} and .ips == {}' > /dev/null 2>&1; then
+        log "Warning: State is empty in refresh mode. Attempting recovery from firewall..."
+        state=$(recover_state)
+    fi
+
     now=$(date +%s)
     changed=false
 
