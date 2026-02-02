@@ -12,7 +12,6 @@ NORMAL='\033[0m'
 SANTA_UNINSTALL_URL="https://raw.githubusercontent.com/northpolesec/santa/refs/heads/main/Conf/uninstall.sh"
 ACTIVE_RESPONSE_DIR="/Library/Ossec/active-response"
 ACTIVE_RESPONSE_BIN_DIR="$ACTIVE_RESPONSE_DIR/bin"
-LAUNCHDAEMONS_DIR="/Library/LaunchDaemons"
 PF_CONF_PATH="/etc/pf.conf"
 
 # Helpers
@@ -67,9 +66,6 @@ remove_pf_rules() {
 TEMP_DIR=$(mktemp -d); trap 'rm -rf "$TEMP_DIR"' EXIT
 
 info "Removing Wazuh integration components..."
-plist="$LAUNCHDAEMONS_DIR/com.wazuh.refresh.plist"
-maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
-maybe_sudo rm -f "$plist"
 
 # Active Response Scripts
 info "Removing DLP active response script and state directory..."

@@ -14,10 +14,8 @@ BLUE='\033[1;34m'
 BOLD='\033[1m'
 NORMAL='\033[0m'
 
-DLP_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-santa/refs/heads/feature/DLP/scripts/dlp.sh"
-PLIST_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-santa/refs/heads/feature/DLP/config/refresh.plist"
+DLP_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-auditd/refs/heads/feat/DLP/scripts/dlp.sh"
 ACTIVE_RESPONSE_DIR="/Library/Ossec/active-response/bin"
-LAUNCHDAEMONS_DIR="/Library/LaunchDaemons"
 PF_CONF_PATH="/etc/pf.conf"
 
 # Helpers
@@ -113,13 +111,6 @@ info "Installing DLP active response script..."
 download "$DLP_URL" "$ACTIVE_RESPONSE_DIR/dlp.sh" 755 || error "Failed to download dlp.sh"
 success "DLP active response script installed successfully."
 
-# LaunchDaemons
-info "Configuring LaunchDaemon..."
-plist="$LAUNCHDAEMONS_DIR/com.wazuh.refresh.plist"
-download "$PLIST_URL" "$plist" 644 || error "Failed to download refresh.plist"
-maybe_sudo launchctl bootout system "$plist" 2>/dev/null || true
-success "LaunchDaemon configured successfully."
-
 # PF Configuration
 info "Configuring PF..."
 ensure_pf_rules
@@ -128,6 +119,13 @@ maybe_sudo pfctl -f "$PF_CONF_PATH" 2>/dev/null || warn "PF reload failed."
 success "PF configured successfully."
 
 info "Verifying installation"
+info "Checking Dependencies..."
+if command_exists jq; then
+    success "jq is installed"
+else
+    warn "jq is not installed. Please install it with: brew install jq"
+fi
+
 info "Checking Santa..."
 if command_exists santactl; then
     success "Santa is installed"
@@ -141,12 +139,5 @@ if maybe_sudo pfctl -sr | grep -q "wazuh_blocked"; then
 else
     error "PF is not configured"
 fi
-
-info "Checking LaunchDaemon..."
-plist="$LAUNCHDAEMONS_DIR/com.wazuh.refresh.plist"
-if [[ ! -f "$plist" ]]; then
-    error "LaunchDaemon not found: $plist"
-fi
-success "LaunchDaemon present."
 
 success "Installation complete!"
