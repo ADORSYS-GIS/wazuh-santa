@@ -6,7 +6,7 @@ else
     set -eu
 fi
 
-# Variables & Constants
+# Define text formatting
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,9 +14,24 @@ BLUE='\033[1;34m'
 BOLD='\033[1m'
 NORMAL='\033[0m'
 
-DLP_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-auditd/refs/heads/feat/DLP/scripts/dlp.sh"
+
+# Variables
+OS_NAME=$(uname -s)
+DLP_BASE_URL="https://raw.githubusercontent.com/ADORSYS-GIS/wazuh-auditd/refs/heads/feat/DLP"
+DLP_SH_URL="${DLP_BASE_URL}/scripts/dlp.sh"
+SURICATA_CONFIG_URL="${DLP_BASE_URL}/config/"
+SURICATA_RULE_FILE="suricata-exfiltration.rules"
 ACTIVE_RESPONSE_DIR="/Library/Ossec/active-response/bin"
 PF_CONF_PATH="/etc/pf.conf"
+case "$OS_NAME" in
+    Darwin)
+        SURICATA_YAML_PATH="/etc/suricata/suricata.yaml"
+        ;;
+    *)
+        error "Unsupported operating system: $OS_NAME. This script is designed for MacOS systems only."
+        exit 1
+        ;;
+esac
 
 # Helpers
 log() {
@@ -30,7 +45,7 @@ log() {
 
 info() { log "${BLUE}${BOLD}[INFO]${NORMAL}" "$*"; }
 warn() { log "${YELLOW}${BOLD}[WARNING]${NORMAL}" "$*"; }
-error() { log "${RED}${BOLD}[ERROR]${NORMAL}"; exit 1; }
+error() { log "${RED}${BOLD}[ERROR]${NORMAL}" "$*"; exit 1; }
 success() { log "${GREEN}${BOLD}[SUCCESS]${NORMAL}" "$*"; }
 
 # Check if a command exists
@@ -108,7 +123,7 @@ fi
 
 # Active Response Scripts
 info "Installing DLP active response script..."
-download "$DLP_URL" "$ACTIVE_RESPONSE_DIR/dlp.sh" 755 || error "Failed to download dlp.sh"
+download "$DLP_SH_URL" "$ACTIVE_RESPONSE_DIR/dlp.sh" 755 || error "Failed to download dlp.sh"
 success "DLP active response script installed successfully."
 
 # PF Configuration
@@ -118,7 +133,42 @@ maybe_sudo pfctl -E 2>/dev/null || true
 maybe_sudo pfctl -f "$PF_CONF_PATH" 2>/dev/null || warn "PF reload failed."
 success "PF configured successfully."
 
+info "Installing Suricata Rules for Exfiltration Detection"
+info "Backing up existing Suricata configuration..."
+if [ -f "$SURICATA_YAML_PATH" ]; then
+    maybe_sudo cp "$SURICATA_YAML_PATH" "${SURICATA_YAML_PATH}.bak" || warn "Failed to backup Suricata configuration. Please ensure you have a backup of your suricata.yaml before proceeding."
+    success "Suricata configuration backed up successfully."
+else
+    warn "Suricata configuration file not found at $SURICATA_YAML_PATH. Please ensure Suricata is installed and configured correctly."
+fi
+info "Installing Suricata Rules for Exfiltration Detection"
+maybe_sudo curl -fsSL "${SURICATA_CONFIG_URL}/${SURICATA_RULE_FILE}" -o /var/lib/suricata/rules/$SURICATA_RULE_FILE || error_exit "Failed to install suricata rules"
+
+maybe_sudo yq -i "
+  .[\"rule-files\"] += [\"$SURICATA_RULE_FILE\"] |
+  .[\"rule-files\"] |= unique
+" "$SURICATA_YAML_PATH" || warn "Failed to update Suricata configuration. Please ensure suricata.yaml is configured correctly."
+success "Suricata rules installed successfully."
+info "Restarting Suricata service..."
+if [ -f /Library/LaunchDaemons/com.suricata.suricata.plist ]; then
+    info "Restarting Suricata (launchd)..."
+    maybe_sudo launchctl kickstart -k system/com.suricata.suricata \
+        || warn "Failed to restart Suricata via launchctl"
+else
+    warn "Suricata LaunchDaemon not found; restart manually"
+fi
+
 info "Verifying installation"
+info "Verifying Suricata rules..."
+if suricata -T -c $SURICATA_YAML_PATH 2>&1 >/dev/null; then
+    success "Suricata rules validated."
+else
+    warn "Suricata rules validation failed, restoring backup."
+    maybe_sudo cp "${SURICATA_YAML_PATH}.bak" "$SURICATA_YAML_PATH" || warn "Failed to restore Suricata configuration backup. Please check your suricata.yaml file."
+    maybe_sudo systemctl restart suricata-wazuh > /dev/null 2>&1 || warn "Failed to restart Suricata service after restoring configuration. Please check your Suricata setup."
+fi
+maybe_sudo rm -f "${SURICATA_YAML_PATH}.bak" || warn "Failed to remove Suricata configuration backup. Please check your suricata.yaml file."
+
 info "Checking Dependencies..."
 if command_exists jq; then
     success "jq is installed"
