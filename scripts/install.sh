@@ -160,12 +160,12 @@ fi
 
 info "Verifying installation"
 info "Verifying Suricata rules..."
-if suricata -T -c $SURICATA_YAML_PATH 2>&1 >/dev/null; then
+if maybe_sudo suricata -T -c $SURICATA_YAML_PATH 2>&1 >/dev/null; then
     success "Suricata rules validated."
 else
     warn "Suricata rules validation failed, restoring backup."
     maybe_sudo cp "${SURICATA_YAML_PATH}.bak" "$SURICATA_YAML_PATH" || warn "Failed to restore Suricata configuration backup. Please check your suricata.yaml file."
-    maybe_sudo systemctl restart suricata-wazuh > /dev/null 2>&1 || warn "Failed to restart Suricata service after restoring configuration. Please check your Suricata setup."
+    maybe_sudo launchctl kickstart -k com.suricata.suricata > /dev/null 2>&1 || warn "Failed to restart Suricata service after restoring configuration. Please check your Suricata setup."
 fi
 maybe_sudo rm -f "${SURICATA_YAML_PATH}.bak" || warn "Failed to remove Suricata configuration backup. Please check your suricata.yaml file."
 
